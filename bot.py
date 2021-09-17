@@ -36,6 +36,16 @@ self_or_contact_filter = filters.create(
     (message.from_user and message.from_user.is_contact) or message.outgoing
 )
 
+autoqueue_filter = filters.create(
+    lambda
+    self,
+    _,
+    __:
+    self.flag,
+    flag = False,
+    switch = lambda self: setattr(self, "flag", not self.flag) or self.flag
+)
+
 
 def parse_id(peer):
 	if isinstance(peer, InputPeerChannel):
@@ -122,9 +132,10 @@ async def ping(client, message):
 	await rape.edit(f'**Pong!**\n> `{m_s} ms`')
 
 
-@app.on_message(filters.command('play') & self_or_contact_filter)
+@app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
 async def play_track(client, message):
-	if not (replied:=message.reply_to_message) or not message.reply_to_message.audio:
+        replied = message if autoqueue_filter.flag else message.reply_to_message
+	if not (replied and replied.audio):
 		return await message.reply("Invalid audio file")
 	if not VOICE_CHATS or message.chat.id not in VOICE_CHATS:
 		try:
@@ -237,6 +248,12 @@ async def skip_song(_, message):
 	if message.chat.id in VOICE_CHATS:
 		await handle_queue(VOICE_CHATS[message.chat.id])
 		await message.reply("Skipped")
+
+@app.on_message(filters.command('auto') & self_or_contact_filter)
+async def auto_queue(_, message):
+    res = autoqueue_filter.switch()
+    await message.reply(f"**_Auto Queue {'' if res else 'de'}activated_**")
+
 
 app.start()
 print('started successfully')
