@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/nandydark/vc-telegram-userbot/main/Logo.png?token=AVUCF6EZOHOWLUM57BW7R73BIRKBO">
+<img src= "https://telegra.ph/file/2d50ee965489da49bff81.jpg" >
 
 Telegram Vc Userbot 
 
