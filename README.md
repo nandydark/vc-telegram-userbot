@@ -28,3 +28,14 @@ For deploying to heroku just click the below given heroku button.
 
 
 [![Deploy To Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nandydark/vc-telegram-userbot/tree/Heroku)
+
+
+# Credits 
+
+Thanks for working together on this project.
+
+[Nandydark](https://github.com/nandydark)
+
+[DanielFoc](https://github.com/danielfoc)
+
+[Harsh-Br0](https://github.com/Harsh-Br0)
