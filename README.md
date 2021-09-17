@@ -17,3 +17,14 @@ Telegram Vc Userbot
 /clear_cache :- To remove cache and previous files
 
 /queue :- To check the current songs queue
+
+For giving anyone access to your bc userbot just add him in contacts.
+
+# Deploy
+
+For deploying it manually just add various values in config file and Start it using Python3 bot.py
+
+For deploying to heroku just click the below given heroku button.
+
+
+[![Deploy To Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nandydark/vc-telegram-userbot/tree/Heroku)
