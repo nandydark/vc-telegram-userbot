@@ -18,7 +18,7 @@ Telegram Vc Userbot
 
 /queue :- To check the current songs queue
 
-For giving anyone access to your bc userbot just add him in contacts.
+> _To give access to the VC userbot, just add him in contacts._
 
 # Deploy
 
