@@ -20,7 +20,7 @@
 
 /skip :- To skip the current playing song
 
-/auto :- Toggles the Auto Queue Switch that listens for audio files in chat and automatically adds them to queue
+/auto :- Toggles the Auto Queue Switch that listens for incoming audio files in chat and automatically adds them to queue
 
 > _To give access to the VC userbot, just add him in contacts._
 
