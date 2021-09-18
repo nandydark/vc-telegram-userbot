@@ -36,6 +36,16 @@ self_or_contact_filter = filters.create(
     (message.from_user and message.from_user.is_contact) or message.outgoing
 )
 
+autoqueue_filter = filters.create(
+    lambda
+    self,
+    _,
+    __:
+    self.flag,
+    flag = False,
+    switch = lambda self: setattr(self, "flag", not self.flag) or self.flag
+)
+
 
 def parse_id(peer):
 	if isinstance(peer, InputPeerChannel):
@@ -122,25 +132,26 @@ async def ping(client, message):
 	await rape.edit(f'**Pong!**\n> `{m_s} ms`')
 
 
-@app.on_message(filters.command('play') & self_or_contact_filter)
+@app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
 async def play_track(client, message):
-	if not (replied:=message.reply_to_message) or not message.reply_to_message.audio:
-		return await message.reply("Invalid audio file")
-	if not VOICE_CHATS or message.chat.id not in VOICE_CHATS:
-		try:
-			group_call = factory.get_file_group_call()
-			await group_call.start(message.chat.id)
-			group_call.on_playout_ended(_skip)
-		except GroupCallNotFoundError:
-			await message.reply('First start a VC in this group rotor')
-			return
-		VOICE_CHATS[message.chat.id] = group_call
-	QUEUE[message.chat.id].append(replied)
-	if PLAYING[message.chat.id]:
-		return await message.reply(get_scheduled_text(message.chat.id, replied.audio.title, replied.link),
-			disable_web_page_preview = True
-		)
-	await handle_queue(VOICE_CHATS[message.chat.id])
+    replied = message if message.audio else message.reply_to_message
+    if not (replied and replied.audio):
+        return await message.reply("Invalid audio file")
+    if not VOICE_CHATS or message.chat.id not in VOICE_CHATS:
+        try:
+            group_call = factory.get_file_group_call()
+            await group_call.start(message.chat.id)
+            group_call.on_playout_ended(_skip)
+        except GroupCallNotFoundError:
+            await message.reply('First start a VC in this group rotor')
+            return
+        VOICE_CHATS[message.chat.id] = group_call
+    QUEUE[message.chat.id].append(replied)
+    if PLAYING[message.chat.id]:
+        return await message.reply(get_scheduled_text(message.chat.id, replied.audio.title, replied.link),
+            disable_web_page_preview = True
+        )
+    await handle_queue(VOICE_CHATS[message.chat.id])
 
 
 @app.on_message(filters.command('stop') & self_or_contact_filter)
@@ -238,9 +249,14 @@ async def skip_song(_, message):
 		await handle_queue(VOICE_CHATS[message.chat.id])
 		await message.reply("Skipped")
 
+@app.on_message(filters.command('auto') & self_or_contact_filter)
+async def auto_queue(_, message):
+    res = autoqueue_filter.switch()
+    await message.reply(f"**__Auto Queue {'' if res else 'de'}activated__**")
+
+
 app.start()
 print('started successfully')
 idle()
 app.stop()
 print('stopping...')
-
