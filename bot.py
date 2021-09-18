@@ -134,8 +134,8 @@ async def ping(client, message):
 
 @app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
 async def play_track(client, message):
-        replied = message if autoqueue_filter.flag else message.reply_to_message
-	if not (replied and replied.audio):
+    replied = message if autoqueue_filter.flag else message.reply_to_message
+    if not (replied and replied.audio):
 		return await message.reply("Invalid audio file")
 	if not VOICE_CHATS or message.chat.id not in VOICE_CHATS:
 		try:
