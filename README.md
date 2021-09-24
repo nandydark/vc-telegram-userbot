@@ -26,7 +26,7 @@
 
 ## Deploy
 
-For deploying it manually just add various values in config file and Start it using Python3 bot.py
+For deploying it manually just add various values in config file and Start it using `bash run`
 
 For deploying to heroku just click the below given heroku button.
 
@@ -38,8 +38,11 @@ For deploying to heroku just click the below given heroku button.
 
 Thanks for working together on this project.
 
-[Nandydark](https://github.com/nandydark)
+ - [Nandydark](https://github.com/nandydark)
 
-[DanielFoc](https://github.com/danielfoc)
+ - [DanielFoc](https://github.com/danielfoc)
 
-[Harsh-Br0](https://github.com/Harsh-Br0)
+ - [Harsh-Br0](https://github.com/Harsh-Br0)
+
+_Thanks to [Dan](https://github.com/deliverance) and [MarshalX](https://github.com/MarshalX) for their respective libraries [Pyrogram](https://github.com/pyrogram/pyrogram) and [Pytgcalls](https://github.com/MarshalX/tgcalls)._
+
