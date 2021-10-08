@@ -4,6 +4,7 @@ import ffmpeg
 import glob
 import os
 import shutil
+import time
 from concurrent.futures import ThreadPoolExecutor
 from config import Config
 from collections import defaultdict
@@ -19,6 +20,7 @@ DEFAULT_DOWNLOAD_DIR = os.path.join(os.getcwd(), 'downloads/')
 PLAYING = defaultdict(lambda: "")
 QUEUE = defaultdict(list)
 FILES = defaultdict(list)
+START_TIME = time.time()
 
 
 api_id = Config.API_ID
@@ -45,6 +47,17 @@ autoqueue_filter = filters.create(
     flag = False,
     switch = lambda self: setattr(self, "flag", not self.flag) or self.flag
 )
+
+
+def format_time(seconds):
+    minutes, seconds = divmod(int(seconds), 60)
+    hours, minutes = divmod(minutes, 60)
+    days, hours = divmod(hours, 24)
+    tmp = ((str(days) + "d, ") if days else "") + \
+        ((str(hours) + "h, ") if hours else "") + \
+        ((str(minutes) + "m, ") if minutes else "") + \
+        ((str(seconds) + "s, ") if seconds else "")
+    return tmp[:-2]
 
 
 def parse_id(peer):
@@ -125,11 +138,12 @@ async def handle_queue(call, clear = False):
 
 @app.on_message(filters.command('ping') & self_or_contact_filter)
 async def ping(client, message):
-	start = datetime.now()
-	rape = await message.reply('Pong!')
-	end = datetime.now()
-	m_s = (end - start).microseconds / 1000
-	await rape.edit(f'**Pong!**\n> `{m_s} ms`')
+    start = datetime.now()
+    rape = await message.reply('Pong!')
+    end = datetime.now()
+    m_s = (end - start).microseconds / 1000
+    uptime = format_time(time.time() - START_TIME)
+    await rape.edit(f'**Pong!**\n> `{m_s} ms`\n\n**Uptime**\n> `{uptime}`')
 
 
 @app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
