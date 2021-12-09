@@ -1,4 +1,4 @@
-<img src= "https://telegra.ph/file/2d50ee965489da49bff81.jpg" >
+<img src= "https://telegra.ph/file/402c80d7f578206fc941d.jpg" >
 
 # Telegram Vc Userbot 
 
