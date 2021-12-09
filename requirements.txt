@@ -1,5 +1,5 @@
 asyncio
 ffmpeg-python
 pyrogram
-pytgcalls
+pytgcalls==3.0.0.dev19
 tgcrypto

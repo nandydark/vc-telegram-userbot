@@ -31,7 +31,7 @@ For deploying it manually just add various values in config file and Start it us
 For deploying to heroku just click the below given heroku button.
 
 
-[![Deploy To Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nandydark/vc-telegram-userbot/tree/Heroku)
+[![Deploy To Heroku](https://www.herokucdn.com/deploy/button.svg)](https://heroku.com/deploy?template=https://github.com/nandydark/vc-telegram-userbot)
 
 
 ## Credits 
@@ -43,6 +43,8 @@ Thanks for working together on this project.
  - [DanielFoc](https://github.com/danielfoc)
 
  - [Harsh-Br0](https://github.com/Harsh-Br0)
+ 
+ - [CybersecByte](https://github.com/cybersecbyte)
 
 _Thanks to [Dan](https://github.com/deliverance) and [MarshalX](https://github.com/MarshalX) for their respective libraries [Pyrogram](https://github.com/pyrogram/pyrogram) and [Pytgcalls](https://github.com/MarshalX/tgcalls)._
 
