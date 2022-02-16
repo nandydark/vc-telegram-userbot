@@ -1,18 +1,14 @@
 
-import asyncio
-import ffmpeg
-import glob
 import os
 import shutil
 import time
-from concurrent.futures import ThreadPoolExecutor
-from config import Config
-from collections import defaultdict
-from pytgcalls import GroupCallFactory
-from pytgcalls.exceptions import GroupCallNotFoundError
 from datetime import datetime
+from collections import defaultdict
+from config import Config
 from pyrogram import filters, Client, idle
-from pyrogram.raw.types import InputPeerChannel
+from pytgcalls import PyTgCalls
+from pytgcalls.types import AudioPiped
+from pytgcalls.exceptions import NoActiveGroupCall
 
 
 VOICE_CHATS = dict()
@@ -27,8 +23,8 @@ api_id = Config.API_ID
 api_hash = Config.API_HASH
 session_name = Config.STRING_SESSION
 app = Client(session_name, api_id, api_hash)
-factory = GroupCallFactory(app)
-EXECUTOR = ThreadPoolExecutor(app.WORKERS)
+vc = PyTgCalls(app, overload_quiet_mode=True)
+
 
 self_or_contact_filter = filters.create(
     lambda
@@ -60,12 +56,6 @@ def format_time(seconds):
     return tmp[:-2]
 
 
-def parse_id(peer):
-	if isinstance(peer, InputPeerChannel):
-		return -1000000000000 - peer.channel_id
-	return -peer.chat_id
-
-
 def get_scheduled_text(chat, title, link):
 	s = "Scheduled [{title}]({link}) on #{position} position"
 	return s.format(title=title, link=link, position=len(QUEUE[chat])+1)
@@ -74,70 +64,62 @@ def get_scheduled_text(chat, title, link):
 def get_first_song(title, link):
 	return f"[{title}]({link})"
 
-async def convert(name):
-	input_filename = os.path.join(os.getcwd(),
-	f'{os.path.splitext(os.path.basename(name))[0]}.raw')
-	def _c():
-		ffmpeg.input(name).output(
-			input_filename,
-			format='s16le',
-			acodec='pcm_s16le',
-			ac=2, ar='48k',
-		).overwrite_output().run()
-		return input_filename
-	loop = asyncio.get_event_loop()
-	return await loop.run_in_executor(EXECUTOR, _c)
-
-
 async def tg_down(message):
 	audio = message.audio
 	my_message = await message.reply('Downloading...')
 	audio_original = await message.download(DEFAULT_DOWNLOAD_DIR)
 
-	await my_message.edit("Encoding...")
-	VOICE_CHATS[message.chat.id].input_filename = file = await convert(audio_original)
-	FILES[message.chat.id].append(file)
+	await my_message.edit("Passing it to VC...")
+	await vc.change_stream(
+		message.chat.id,
+		AudioPiped(audio_original)
+	)
+	FILES[message.chat.id].append(audio_original)
 	await my_message.edit(f"Playing **[{audio.title}]({message.link})**")
-	os.remove(audio_original)
 
 
 async def _skip(c, __):
 	await handle_queue(c)
 
 
-async def handle_queue(call, clear = False):
+async def handle_queue(chat_id, clear = False):
 	
-	call.stop_playout()
+	await vc.change_stream(
+		chat_id,
+		AudioPiped(
+			'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
+		)
+    )
 
 	if clear:
-		QUEUE[parse_id(call.chat_peer)].clear()
+		QUEUE[chat_id].clear()
 
-	if not QUEUE[parse_id(call.chat_peer)]:
-		PLAYING[parse_id(call.chat_peer)] = ""
+	if not QUEUE[chat_id]:
+		PLAYING[chat_id] = ""
 		return
 
-	shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True)
-	msg = QUEUE[parse_id(call.chat_peer)].pop(0)
+	shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True) # here needs to delete files 
+	msg = QUEUE[chat_id].pop(0)
 	try:
-		PLAYING[parse_id(call.chat_peer)] = get_first_song(msg.audio.title, msg.link)
+		PLAYING[chat_id] = get_first_song(msg.audio.title, msg.link)
 		await tg_down(msg)
 	except Exception as err:
-		PLAYING[parse_id(call.chat_peer)] = ""
+		PLAYING[chat_id] = ""
 		out = f"**ERROR:** `{str(err)}`"
-		if QUEUE[parse_id(call.chat_peer)]:
+		if QUEUE[chat_id]:
 			out += "\n\n`Playing next Song.`"
-		await call.client.send_message(
-			parse_id(call.chat_peer),
+		await app.send_message(
+			chat_id,
 			out,
 			disable_web_page_preview=True
-	        )
-		await handle_queue(call)
+	    )
+		await handle_queue(chat_id)
 	finally:
-		shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True)
+		shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True) # here needs to delete files 
 
 
 @app.on_message(filters.command('ping') & self_or_contact_filter)
-async def ping(client, message):
+async def ping(_, message):
     start = datetime.now()
     rape = await message.reply('Pong!')
     end = datetime.now()
@@ -147,33 +129,38 @@ async def ping(client, message):
 
 
 @app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
-async def play_track(client, message):
+async def play_track(_, message):
     replied = message if message.audio else message.reply_to_message
     if not (replied and replied.audio):
         return await message.reply("Invalid audio file")
-    if not VOICE_CHATS or message.chat.id not in VOICE_CHATS:
+    if not vc.calls or message.chat.id not in list(map(lambda x: x.chat_id, vc.calls)):
         try:
-            group_call = factory.get_file_group_call()
-            await group_call.start(message.chat.id)
-            group_call.on_playout_ended(_skip)
-        except GroupCallNotFoundError:
+            await vc.join_group_call(
+                message.chat.id,
+				AudioPiped(
+					'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
+				)
+            )
+        except NoActiveGroupCall:
             await message.reply('First start a VC in this group rotor')
             return
-        VOICE_CHATS[message.chat.id] = group_call
     QUEUE[message.chat.id].append(replied)
     if PLAYING[message.chat.id]:
         return await message.reply(get_scheduled_text(message.chat.id, replied.audio.title, replied.link),
             disable_web_page_preview = True
         )
-    await handle_queue(VOICE_CHATS[message.chat.id])
+    await handle_queue(message.chat.id)
 
 
 @app.on_message(filters.command('stop') & self_or_contact_filter)
-async def stop_playing(client, message):
-	group_call = VOICE_CHATS[message.chat.id]
-	await handle_queue(group_call, True)
-	group_call.stop_playout()
-	shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True)
+async def stop_playing(__, message):
+	await handle_queue(message.chat.id, True)
+	await vc.change_stream(
+		message.chat.id,
+		AudioPiped(
+			'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
+		)
+    )
 	for i in FILES[message.chat.id]:
 		os.remove(i)
 		FILES[message.chat.id].clear()
@@ -181,32 +168,34 @@ async def stop_playing(client, message):
 
 
 @app.on_message(filters.command('joinvc') & self_or_contact_filter)
-async def join_voice_chat(client, message):
-	if message.chat.id in VOICE_CHATS:
+async def join_voice_chat(_, message):
+	if message.chat.id in list(map(lambda x: x.chat_id, vc.calls)):
 		await message.reply('Already in')
 		return
-	chat_id = message.chat.id
 	try:
-		group_call = factory.get_file_group_call()
-		await group_call.start(chat_id)
-		group_call.on_playout_ended(_skip)
-	except GroupCallNotFoundError:
+		await vc.join_group_call(
+			message.chat.id,
+			AudioPiped(
+				'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
+			)
+        )
+	except NoActiveGroupCall:
 		await message.reply('First start a VC in this group rotor')
 		return
 	except Exception as e:
 		await message.reply('Error Now rape me!')
 		print(e)
 		return
-	VOICE_CHATS[chat_id] = group_call
 	await message.reply('Joined ')
 
 
 @app.on_message(filters.command('leavevc') & self_or_contact_filter)
-async def leave_voice_chat(client, message):
+async def leave_voice_chat(_, message):
 	chat_id = message.chat.id
-	group_call = VOICE_CHATS[chat_id]
-	await handle_queue(group_call, True)
-	await group_call.stop()
+	await handle_queue(chat_id, True)
+	await vc.leave_group_call(
+		message.chat.id,
+	)
 	VOICE_CHATS.pop(chat_id, None)
 	await message.reply('Left')
 
@@ -239,7 +228,6 @@ async def join_group(_, message):
 
 @app.on_message(filters.command('clear_cache') & self_or_contact_filter)
 async def clear_cache(_, message):
-	shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True)
 	for i in FILES[message.chat.id]:
 		os.remove(i)
 		FILES[message.chat.id].clear()
@@ -259,8 +247,8 @@ async def show_queue(_, message):
 
 @app.on_message(filters.command('skip') & self_or_contact_filter)
 async def skip_song(_, message):
-	if message.chat.id in VOICE_CHATS:
-		await handle_queue(VOICE_CHATS[message.chat.id])
+	if message.chat.id in list(map(lambda x: x.chat_id, vc.calls)):
+		await handle_queue(message.chat.id)
 		await message.reply("Skipped")
 
 @app.on_message(filters.command('auto') & self_or_contact_filter)
@@ -270,6 +258,7 @@ async def auto_queue(_, message):
 
 
 app.start()
+vc.start()
 print('started successfully')
 idle()
 app.stop()
