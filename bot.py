@@ -73,7 +73,7 @@ def clear_cache(chat_id, all = False):
     for i in FILES[chat_id]:
         if i not in PLAYING[chat_id]:
             os.remove(i)
-    FILES[chat_id] = [PLAYING[chat_id][1]]
+    FILES[chat_id] = [*(PLAYING[chat_id][1:] or tuple())]
 
 async def tg_down(message):
     audio = message.audio
