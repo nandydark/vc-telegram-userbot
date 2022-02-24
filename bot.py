@@ -58,20 +58,22 @@ def format_time(seconds):
 
 
 def get_scheduled_text(chat, title, link):
-    s = "Scheduled [{title}]({link}) on #{position} position"
+    s = "Scheduled **[{title}]({link})** on #{position} position"
     return s.format(title=title, link=link, position=len(QUEUE[chat])+1)
 
 
 def get_formatted_link(title, link):
     return f"[{title}]({link})"
 
-def clear_cache(all = False):
+def clear_cache(chat_id, all = False):
     if all:
-        return shutil.rmtree(DEFAULT_DOWNLOAD_DIR, ignore_errors=True)
-    _playlist = map(lambda x:x[1], PLAYING.values())
-    for i in chain.from_iterable(FILES.values()):
-        if i not in _playlist:
+        for i in FILES[chat_id]:
             os.remove(i)
+        return FILES[chat_id].clear()
+    for i in FILES[chat_id]:
+        if i not in PLAYING[chat_id]:
+            os.remove(i)
+    FILES[chat_id] = [PLAYING[chat_id][1]]
 
 async def tg_down(message):
     audio = message.audio
@@ -89,22 +91,22 @@ async def tg_down(message):
 
 
 async def handle_queue(chat_id, clear = False):
-    
-    await vc.change_stream(
-        chat_id,
-        AudioPiped(
-            'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
-        )
-    )
 
     if clear:
         QUEUE[chat_id].clear()
 
     if not QUEUE[chat_id]:
+        if PLAYING[chat_id]:
+            await vc.change_stream(
+                chat_id,
+                AudioPiped(
+                    'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
+                )
+            )
         PLAYING[chat_id] = tuple()
         return
 
-    clear_cache()
+    clear_cache(chat_id)
     msg = QUEUE[chat_id].pop(0)
     try:
         PLAYING[chat_id] = get_formatted_link(msg.audio.title, msg.link), await tg_down(msg)
@@ -120,12 +122,12 @@ async def handle_queue(chat_id, clear = False):
         )
         await handle_queue(chat_id)
     finally:
-        clear_cache() 
+        clear_cache(chat_id) 
 
 
 @vc.on_stream_end()
 async def _skip(_, u):
-    await app.send_message(u.chat_id, str(u))
+    await handle_queue(u.chat_id)
 
 
 @app.on_message(filters.command('ping') & self_or_contact_filter)
@@ -135,7 +137,7 @@ async def ping(_, message):
     end = datetime.now()
     m_s = (end - start).microseconds / 1000
     uptime = format_time(time.time() - START_TIME)
-    await rape.edit(f'**Pong!**\n> `{m_s} ms`\n\n**NodeJS Core Ping**\n> `{vc.ping} ms`\n\n**Uptime**\n> `{uptime}`')
+    await rape.edit(f'**Pong!**\n> `{m_s} ms`\n\n**NodeJS Core Ping**\n> `{await vc.ping} ms`\n\n**Uptime**\n> `{uptime}`')
 
 
 @app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
@@ -148,7 +150,7 @@ async def play_track(_, message):
             await vc.join_group_call(
                 message.chat.id,
                 AudioPiped(
-                    'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
+                    'http://duramecho.com/Misc/SilentCd/Silence08s.mp3'
                 )
             )
         except NoActiveGroupCall:
@@ -165,13 +167,7 @@ async def play_track(_, message):
 @app.on_message(filters.command('stop') & self_or_contact_filter)
 async def stop_playing(__, message):
     await handle_queue(message.chat.id, True)
-    await vc.change_stream(
-        message.chat.id,
-        AudioPiped(
-            'http://duramecho.com/Misc/SilentCd/Silence01s.mp3'
-        )
-    )
-    clear_cache(True)
+    clear_cache(message.chat.id, True)
     await message.reply('Stopped')
 
 
@@ -238,7 +234,7 @@ async def join_group(_, message):
 
 @app.on_message(filters.command('cacheclear') & self_or_contact_filter)
 async def _clear_cache(_, message):
-    clear_cache()
+    clear_cache(message.chat.id)
     await message.reply_text("Cleared all Downloaded Files")
 
 
