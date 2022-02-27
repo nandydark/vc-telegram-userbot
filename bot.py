@@ -1,14 +1,15 @@
 
 import os
-import shutil
+import json
 import time
+import shlex
+import asyncio
 from config import Config
-from itertools import chain
 from datetime import datetime
 from collections import defaultdict
 from pyrogram import filters, Client, idle
 from pytgcalls import PyTgCalls
-from pytgcalls.types import AudioPiped
+from pytgcalls.types import AudioPiped, AudioVideoPiped, VideoParameters
 from pytgcalls.exceptions import NoActiveGroupCall
 
 
@@ -75,19 +76,69 @@ def clear_cache(chat_id, all = False):
             os.remove(i)
     FILES[chat_id] = [*(PLAYING[chat_id][1:] or tuple())]
 
+
+async def get_subprocess_output(cmd):
+    process = await asyncio.create_subprocess_shell(
+             cmd,
+             stdout=asyncio.subprocess.PIPE,
+             stderr=asyncio.subprocess.PIPE
+    )
+    if await process.wait() == 0:
+         return (await process.stdout.read()).decode()
+    raise Exception("Error Occurred:\n" + (await process.stderr.read()).decode())
+
+
+async def fetch_metadata(file):
+    cmd = "ffprobe -v error -show_entries stream=width,height,codec_type,codec_name -of json {file}"
+    _output = await get_subprocess_output(cmd.format(file=shlex.quote(file)))
+    try:
+        output = json.loads(_output) or {}
+    except json.JSONDecodeError:
+        output = {}
+    streams = output.get('streams', [])
+    width, height, have_video, have_audio  = 0, 0, False, False
+    for stream in streams:
+        if stream.get('codec_type', '') == 'video':
+            width = min(int(stream.get('width', 0)), 1280)
+            height = min(int(stream.get('height', 0)), 720)
+            if width and height:
+                have_video = True
+        elif stream.get('codec_type', '') == "audio":
+            have_audio = True
+    return height, width, have_video, have_audio
+
+async def play_media(file, msg):
+    height, width, have_video, have_audio = await fetch_metadata(file)
+    stream = AudioPiped('http://duramecho.com/Misc/SilentCd/Silence01s.mp3')
+    if have_video and have_audio:
+        stream = AudioVideoPiped(
+            file,
+            video_parameters=VideoParameters(
+                width,
+                height,
+                25
+            )
+        )
+    else:
+        stream = AudioPiped(file)
+    await vc.change_stream(
+        msg.chat.id,
+        stream
+    )
+
+
 async def tg_down(message):
     audio = message.audio
     my_message = await message.reply('Downloading...')
-    audio_original = await message.download(DEFAULT_DOWNLOAD_DIR)
+    original_file = await message.download(DEFAULT_DOWNLOAD_DIR)
 
-    await my_message.edit("Passing it to VC...")
-    await vc.change_stream(
-        message.chat.id,
-        AudioPiped(audio_original)
+    await asyncio.gather(
+        my_message.edit("Passing it to VC..."),
+        play_media(original_file, message)
     )
-    FILES[message.chat.id].append(audio_original)
-    await my_message.edit(f"Playing **[{audio.title}]({message.link})**")
-    return audio_original
+    FILES[message.chat.id].append(original_file)
+    await my_message.edit(f"Playing **{get_formatted_link(audio.title, message.link)}**")
+    return original_file
 
 
 async def handle_queue(chat_id, clear = False):
@@ -131,7 +182,7 @@ async def _skip(_, u):
 
 
 @app.on_message(filters.command('ping') & self_or_contact_filter)
-async def ping(_, message):
+async def _ping(_, message):
     start = datetime.now()
     rape = await message.reply('Pong!')
     end = datetime.now()
@@ -140,11 +191,14 @@ async def ping(_, message):
     await rape.edit(f'**Pong!**\n> `{m_s} ms`\n\n**NodeJS Core Ping**\n> `{await vc.ping} ms`\n\n**Uptime**\n> `{uptime}`')
 
 
-@app.on_message(((autoqueue_filter & filters.audio) | filters.command('play')) & self_or_contact_filter)
-async def play_track(_, message):
+@app.on_message(
+    ((autoqueue_filter
+    & filters.create(lambda _,__,m: bool(m.audio or m.video or m.document)))
+    | filters.command('play')) & self_or_contact_filter)
+async def _play(_, message):
     replied = message if message.audio else message.reply_to_message
-    if not (replied and replied.audio):
-        return await message.reply("Invalid audio file")
+    if not (replied and any(getattr(replied, i) for i in ("audio", "video", "document"))):
+        return await message.reply("Invalid file...")
     if not vc.calls or message.chat.id not in list(map(lambda x: x.chat_id, vc.calls)):
         try:
             await vc.join_group_call(
@@ -165,14 +219,14 @@ async def play_track(_, message):
 
 
 @app.on_message(filters.command('stop') & self_or_contact_filter)
-async def stop_playing(__, message):
+async def _stop(__, message):
     await handle_queue(message.chat.id, True)
     clear_cache(message.chat.id, True)
     await message.reply('Stopped')
 
 
 @app.on_message(filters.command('joinvc') & self_or_contact_filter)
-async def join_voice_chat(_, message):
+async def _join_vc(_, message):
     if message.chat.id in list(map(lambda x: x.chat_id, vc.calls)):
         await message.reply('Already in')
         return
@@ -194,7 +248,7 @@ async def join_voice_chat(_, message):
 
 
 @app.on_message(filters.command('leavevc') & self_or_contact_filter)
-async def leave_voice_chat(_, message):
+async def _leave_vc(_, message):
     chat_id = message.chat.id
     await handle_queue(chat_id, True)
     await vc.leave_group_call(
@@ -205,7 +259,7 @@ async def leave_voice_chat(_, message):
 
 
 @app.on_message(filters.command('leave_group') & self_or_contact_filter)
-async def leave_group(_, message):
+async def _leave_group(_, message):
     if len(message.command) != 2:
         await message.reply_text("/leave_group `GroupID`")
         return
@@ -219,7 +273,7 @@ async def leave_group(_, message):
 
 
 @app.on_message(filters.command('join_group') & self_or_contact_filter)
-async def join_group(_, message):
+async def _join_group(_, message):
     if len(message.command) != 2:
         await message.reply_text("/join_group `GroupID`")
         return
@@ -239,7 +293,7 @@ async def _clear_cache(_, message):
 
 
 @app.on_message(filters.command('queue') & self_or_contact_filter)
-async def show_queue(_, message):
+async def _queue(_, message):
     queue = QUEUE[message.chat.id]
     _no = (len(queue) + 1) if PLAYING[message.chat.id] else len(queue)
     if not _no:
@@ -252,14 +306,14 @@ async def show_queue(_, message):
 
 
 @app.on_message(filters.command('skip') & self_or_contact_filter)
-async def skip_song(_, message):
+async def _skip(_, message):
     if message.chat.id in list(map(lambda x: x.chat_id, vc.calls)):
         await handle_queue(message.chat.id)
         await message.reply("Skipped")
 
 
 @app.on_message(filters.command('auto') & self_or_contact_filter)
-async def auto_queue(_, message):
+async def _autoQ(_, message):
     res = autoqueue_filter.switch()
     await message.reply(f"**__Auto Queue {'' if res else 'de'}activated__**")
 
