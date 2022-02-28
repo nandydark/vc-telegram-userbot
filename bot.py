@@ -7,6 +7,7 @@ import asyncio
 from config import Config
 from datetime import datetime
 from collections import defaultdict
+from pathlib import Path
 from pyrogram import filters, Client, idle
 from pytgcalls import PyTgCalls
 from pytgcalls.types import AudioPiped, AudioVideoPiped, VideoParameters
@@ -66,6 +67,15 @@ def get_scheduled_text(chat, title, link):
 def get_formatted_link(title, link):
     return f"[{title}]({link})"
 
+
+def get_media(m):
+    return m.audio or m.video or m.document
+
+
+def get_media_name(m):
+    return Path(getattr(get_media(m), 'file_name', 'Media')).stem.title()
+
+
 def clear_cache(chat_id, all = False):
     if all:
         for i in FILES[chat_id]:
@@ -107,6 +117,7 @@ async def fetch_metadata(file):
             have_audio = True
     return height, width, have_video, have_audio
 
+
 async def play_media(file, msg):
     height, width, have_video, have_audio = await fetch_metadata(file)
     stream = AudioPiped('http://duramecho.com/Misc/SilentCd/Silence01s.mp3')
@@ -128,7 +139,6 @@ async def play_media(file, msg):
 
 
 async def tg_down(message):
-    audio = message.audio
     my_message = await message.reply('Downloading...')
     original_file = await message.download(DEFAULT_DOWNLOAD_DIR)
 
@@ -137,7 +147,7 @@ async def tg_down(message):
         play_media(original_file, message)
     )
     FILES[message.chat.id].append(original_file)
-    await my_message.edit(f"Playing **{get_formatted_link(audio.title, message.link)}**")
+    await my_message.edit(f"Playing **{get_formatted_link(get_media_name(message), message.link)}**")
     return original_file
 
 
@@ -160,7 +170,7 @@ async def handle_queue(chat_id, clear = False):
     clear_cache(chat_id)
     msg = QUEUE[chat_id].pop(0)
     try:
-        PLAYING[chat_id] = get_formatted_link(msg.audio.title, msg.link), await tg_down(msg)
+        PLAYING[chat_id] = get_formatted_link(get_media_name(msg), msg.link), await tg_down(msg)
     except Exception as err:
         PLAYING[chat_id] = tuple()
         out = f"**ERROR:** `{str(err)}`"
@@ -193,11 +203,11 @@ async def _ping(_, message):
 
 @app.on_message(
     ((autoqueue_filter
-    & filters.create(lambda _,__,m: bool(m.audio or m.video or m.document)))
+    & filters.create(lambda _,__,m: bool(get_media(m))))
     | filters.command('play')) & self_or_contact_filter)
 async def _play(_, message):
-    replied = message if message.audio else message.reply_to_message
-    if not (replied and any(getattr(replied, i) for i in ("audio", "video", "document"))):
+    replied = message if get_media(message) else message.reply_to_message
+    if not (replied and get_media(replied)):
         return await message.reply("Invalid file...")
     if not vc.calls or message.chat.id not in list(map(lambda x: x.chat_id, vc.calls)):
         try:
@@ -212,7 +222,7 @@ async def _play(_, message):
             return
     QUEUE[message.chat.id].append(replied)
     if PLAYING[message.chat.id]:
-        return await message.reply(get_scheduled_text(message.chat.id, replied.audio.title, replied.link),
+        return await message.reply(get_scheduled_text(message.chat.id, get_media_name(replied), replied.link),
             disable_web_page_preview = True
         )
     await handle_queue(message.chat.id)
@@ -301,7 +311,7 @@ async def _queue(_, message):
     msg = (f'**__{_no} Song{"s" if _no > 1 else ""} in queue:__**\n\n'
             f"▶ {PLAYING[message.chat.id][0]}\n")
     for m in queue:
-        msg += f"● {get_formatted_link(m.audio.title, m.link)}\n"
+        msg += f"● {get_formatted_link(get_media_name(m), m.link)}\n"
     await message.reply(msg.strip(), disable_web_page_preview=True)
 
 
