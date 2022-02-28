@@ -264,7 +264,8 @@ async def _leave_vc(_, message):
     await vc.leave_group_call(
         message.chat.id,
     )
-    VOICE_CHATS.pop(chat_id, None)
+    VOICE_CHATS.pop(chat_id)
+    clear_cache(chat_id)
     await message.reply('Left')
 
 
