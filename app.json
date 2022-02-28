@@ -29,10 +29,13 @@
     "addons": [],
     "buildpacks": [
         {
-            "url": "heroku/python"
+            "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest"
         },
         {
-            "url": "https://github.com/jonathanong/heroku-buildpack-ffmpeg-latest"
+            "url": "https://github.com/subinps/heroku-buildpack-nodejs"
+        },
+        {
+            "url": "heroku/python"
         }
     ],
     "formation": {
